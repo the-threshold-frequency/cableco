@@ -2,12 +2,12 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Import useRouter for redirection
+import { useRouter } from 'next/navigation';
 import { User, Mail, Lock, Phone, Home, Tv, ArrowRight, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SignUpPage() {
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,6 +18,7 @@ export default function SignUpPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
+  // Initialize the client
   const supabase = createClient();
 
   const handleSignUp = async (e) => {
@@ -25,33 +26,36 @@ export default function SignUpPage() {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          phone: phone,
-          address: address,
-          role: 'customer', 
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: phone,
+            address: address,
+            role: 'customer', 
+          },
         },
-      },
-    });
+      });
 
-    if (error) {
-      setError(error.message);
-    } else if (data.session) {
-      // CASE 1: Auto-confirm is ON (or email confirmation is OFF in dashboard)
-      // The user is logged in immediately. Redirect to dashboard.
-      router.push('/dashboard'); 
-      router.refresh(); // Ensure middleware picks up the new session
-    } else {
-      // CASE 2: Email confirmation is required
-      // The user must check their inbox.
-      setSuccess(true);
+      if (error) {
+        setError(error.message);
+      } else if (data.session) {
+        // Auto-login successful
+        router.push('/dashboard'); 
+        router.refresh(); 
+      } else {
+        // Email confirmation required
+        setSuccess(true);
+      }
+    } catch (err) {
+      setError('An unexpected error occurred.');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   if (success) {
@@ -63,7 +67,7 @@ export default function SignUpPage() {
              Check your email
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            We've sent a confirmation link to <strong>{email}</strong>.<br/>
+            We&apos;ve sent a confirmation link to <strong>{email}</strong>.<br/>
             Please check your inbox to complete your registration.
           </p>
           <div className="mt-6">
