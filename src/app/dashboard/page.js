@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 // --- UI COMPONENTS ---
 
 const StatCard = ({ title, value, icon, color, subtext }) => (
-  <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300">
+  <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300">
     <div className="flex items-start justify-between">
       <div className="flex items-center">
         <div className={`p-3 rounded-xl mr-4 text-white shadow-md ${color}`}>
@@ -24,7 +24,7 @@ const StatCard = ({ title, value, icon, color, subtext }) => (
 );
 
 const RevenueWidget = ({ view, setView, paidAmount, pendingAmount, loading }) => (
-  <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 lg:col-span-2">
+  <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 lg:col-span-2">
     {/* Header & Toggle */}
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
       <div className="flex items-center gap-4">
@@ -72,7 +72,7 @@ const RevenueWidget = ({ view, setView, paidAmount, pendingAmount, loading }) =>
 
     {/* Breakdown Grid */}
     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-      <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30">
+      <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30">
         <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1 flex items-center gap-1">
           <ArrowUpRight size={14}/> Collected
         </p>
@@ -80,7 +80,7 @@ const RevenueWidget = ({ view, setView, paidAmount, pendingAmount, loading }) =>
             {loading ? '...' : `₹${paidAmount.toLocaleString()}`}
         </p>
       </div>
-      <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/30">
+      <div className="p-4 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/30">
         <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-1 flex items-center gap-1">
           <Clock size={14}/> Pending Due
         </p>
@@ -93,7 +93,7 @@ const RevenueWidget = ({ view, setView, paidAmount, pendingAmount, loading }) =>
 );
 
 const ActionButton = ({ text, icon, onClick }) => (
-    <button onClick={onClick} className="w-full flex items-center justify-between text-left p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:shadow-md transition-all duration-200 group">
+    <button onClick={onClick} className="w-full flex items-center justify-between text-left p-4 sm:px-6 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:shadow-md transition-all duration-200 group">
         <div className="flex items-center gap-3">
             <div className="text-indigo-500 group-hover:scale-110 transition-transform duration-200">
                 {icon}
@@ -165,14 +165,11 @@ const SuperAdminDashboard = ({ user }) => {
 
         if (invoices) {
             invoices.forEach(inv => {
-                // Calculate Paid Total (amount_paid tracks partials too)
-                // If status is 'paid', take full amount. If partial, take amount_paid.
-                // Assuming simple model where amount_paid is reliable:
+                // Calculate Paid Total
                 paidTotal += (inv.amount_paid || 0);
 
                 // Calculate Pending Total
                 if (inv.status === 'pending' || inv.status === 'overdue') {
-                    // Pending amount is (Due - Paid)
                     pendingTotal += (inv.amount_due - (inv.amount_paid || 0));
                 }
             });
@@ -259,11 +256,11 @@ const CustomerDashboard = ({ user }) => (
   <div>
     <h2 className="text-3xl font-bold text-gray-800 dark:text-white">My Account</h2>
     <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
+        <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg">
             <h3 className="font-semibold text-lg text-gray-800 dark:text-white">Current Plan</h3>
             <p className="text-indigo-500 dark:text-indigo-400 text-2xl font-bold mt-2">Loading...</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
+        <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg">
             <h3 className="font-semibold text-lg text-gray-800 dark:text-white">Next Recharge</h3>
             <p className="text-gray-500 text-2xl font-bold mt-2">N/A</p>
         </div>
@@ -309,10 +306,18 @@ export default function DashboardPage() {
   
   if (!session) return <div className="p-10 text-center">Please log in.</div>;
 
-  switch (role) {
-    case 'superadmin': return <SuperAdminDashboard user={session.user} />;
-    case 'employee': return <EmployeeDashboard user={session.user} />;
-    case 'customer': return <CustomerDashboard user={session.user} />;
-    default: return <CustomerDashboard user={session.user} />;
-  }
+  // Render based on role
+  // Container now has px-6 for mobile (previously p-4) to add better horizontal padding as requested
+  return (
+    <div className="px-6 py-6 sm:p-10 max-w-7xl mx-auto">
+        {(() => {
+            switch (role) {
+                case 'superadmin': return <SuperAdminDashboard user={session.user} />;
+                case 'employee': return <EmployeeDashboard user={session.user} />;
+                case 'customer': return <CustomerDashboard user={session.user} />;
+                default: return <CustomerDashboard user={session.user} />;
+            }
+        })()}
+    </div>
+  );
 }

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Lock, Phone, Home, Tv, ArrowRight, Loader2 } from 'lucide-react';
+import { User, Mail, Lock, Phone, Home, Tv, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SignUpPage() {
@@ -13,12 +13,12 @@ export default function SignUpPage() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [showPassword, setShowPassword] = useState(false); // Toggle state
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  // Initialize the client
   const supabase = createClient();
 
   const handleSignUp = async (e) => {
@@ -43,11 +43,9 @@ export default function SignUpPage() {
       if (error) {
         setError(error.message);
       } else if (data.session) {
-        // Auto-login successful
         router.push('/dashboard'); 
         router.refresh(); 
       } else {
-        // Email confirmation required
         setSuccess(true);
       }
     } catch (err) {
@@ -71,7 +69,7 @@ export default function SignUpPage() {
             Please check your inbox to complete your registration.
           </p>
           <div className="mt-6">
-            <Link href="/login" className="text-indigo-600 hover:text-indigo-500 font-medium">
+            <Link href="/auth/login" className="text-indigo-600 hover:text-indigo-500 font-medium">
                 Return to Login
             </Link>
           </div>
@@ -104,7 +102,25 @@ export default function SignUpPage() {
             </div>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
-              <input id="password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required minLength={6} className="pl-10 w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Password" />
+              <input 
+                id="password" 
+                name="password" 
+                type={showPassword ? "text" : "password"} // Dynamic
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                autoComplete="current-password" 
+                required 
+                minLength={6} 
+                className="pl-10 pr-10 w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                placeholder="Password" 
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
              <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
@@ -135,7 +151,7 @@ export default function SignUpPage() {
           </div>
         </form>
          <div className="text-sm text-center">
-            <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+            <Link href="/auth/login" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
               Already have an account? Sign In
             </Link>
           </div>

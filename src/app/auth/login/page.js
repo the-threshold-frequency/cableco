@@ -3,18 +3,18 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Tv, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, Tv, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false); // Toggle state
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Initialize the real Supabase client
   const supabase = createClient();
 
   const handleLogin = async (e) => {
@@ -31,8 +31,6 @@ export default function LoginPage() {
       if (error) {
         setError(error.message);
       } else {
-        // Successful sign-in
-        // Redirect to dashboard and refresh to update middleware state
         router.push('/dashboard');
         router.refresh();
       }
@@ -57,7 +55,7 @@ export default function LoginPage() {
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-          <div className="rounded-md shadow-sm -space-y-px flex flex-col gap-4">
+          <div className="rounded-md shadow-sm space-y-4">
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
               <input 
@@ -77,14 +75,21 @@ export default function LoginPage() {
               <input 
                 id="password" 
                 name="password" 
-                type="password" 
+                type={showPassword ? "text" : "password"} // Dynamic type
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 autoComplete="current-password" 
                 required 
-                className="pl-10 w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                className="pl-10 pr-10 w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" 
                 placeholder="Password" 
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
           </div>
           
@@ -115,7 +120,7 @@ export default function LoginPage() {
           </div>
         </form>
          <div className="text-sm text-center">
-            <Link href="/signup" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+            <Link href="/auth/signup" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
               Don&apos;t have an account? Sign Up
             </Link>
           </div>
