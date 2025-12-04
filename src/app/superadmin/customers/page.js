@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Eye, MoreVertical, User, MapPin, Hash, Phone, Loader2, Plus, X, Trash2, ChevronRight, Tag } from 'lucide-react';
+import { Search, Eye, MoreVertical, User, MapPin, Hash, Phone, Loader2, Plus, X, Trash2, ChevronRight, Tag, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { createCustomerAction } from '@/app/actions/createCustomer';
@@ -33,11 +33,8 @@ const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-end sm:items-center p-0 sm:p-4 backdrop-blur-[2px] transition-all">
-      
-      {/* Liquid Glass Container */}
       <div className="w-full max-w-md bg-white/20 dark:bg-black/40 backdrop-blur-2xl border border-white/30 dark:border-white/10 shadow-[0_8px_32px_0_rgba(31,38,135,0.37)] rounded-t-3xl sm:rounded-3xl p-8 animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300 relative overflow-hidden">
         
-        {/* Ambient Background Blobs for 'Liquid' feel */}
         <div className="absolute -top-20 -left-20 w-60 h-60 bg-indigo-500/30 rounded-full blur-3xl pointer-events-none mix-blend-overlay"></div>
         <div className="absolute -bottom-20 -right-20 w-60 h-60 bg-purple-500/30 rounded-full blur-3xl pointer-events-none mix-blend-overlay"></div>
 
@@ -56,7 +53,6 @@ const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
             {error && <p className="text-sm text-red-600 bg-red-100/80 p-3 rounded-xl border border-red-200 backdrop-blur-sm">{error}</p>}
             
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar -mr-2 p-1">
-                {/* Glassy Inputs */}
                 <div>
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider mb-1.5 ml-1">Full Name *</label>
                     <input name="full_name" type="text" required placeholder="e.g. John Doe" 
@@ -114,7 +110,7 @@ const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
   );
 };
 
-
+// --- MAIN PAGE COMPONENT ---
 export default function ManageCustomersPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -126,12 +122,14 @@ export default function ManageCustomersPage() {
   // Fetch Customers
   const fetchCustomers = async () => {
     setLoading(true);
+    // FIX: Added 'created_at' to subscriptions so we can find the latest one
     const { data, error } = await supabase
       .from('users')
       .select(`
         *,
         subscriptions (
           status,
+          created_at,
           packages ( name )
         )
       `)
@@ -162,10 +160,27 @@ export default function ManageCustomersPage() {
     );
   });
 
-  // Helper
+  // Helper to get active package name safely
+  // FIX: Sort by date to ensure we get the latest active plan, not an old one
   const getActivePackage = (customer) => {
-    const activeSub = customer.subscriptions?.find(sub => sub.status === 'active');
+    if (!customer.subscriptions || customer.subscriptions.length === 0) return 'No Active Plan';
+    
+    const activeSub = customer.subscriptions
+        .filter(sub => sub.status === 'active')
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
     return activeSub?.packages?.name || 'No Active Plan';
+  };
+
+  // Delete Handler
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this customer? This action cannot be undone.")) return;
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) {
+        alert('Error deleting customer: ' + error.message);
+    } else {
+        setCustomers(customers.filter(c => c.id !== id));
+    }
   };
 
   return (
@@ -175,12 +190,17 @@ export default function ManageCustomersPage() {
         <div className="lg:hidden sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 p-4 shadow-sm">
             <div className="flex justify-between items-center mb-3">
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">Customers</h1>
-                <button 
-                    onClick={() => setIsModalOpen(true)} 
-                    className="p-2 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-500/30 active:scale-95 transition-all"
-                >
-                    <Plus size={20} />
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={fetchCustomers} className="p-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full shadow-sm active:scale-95 transition-all">
+                        <RefreshCw size={20} />
+                    </button>
+                    <button 
+                        onClick={() => setIsModalOpen(true)} 
+                        className="p-2 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-500/30 active:scale-95 transition-all"
+                    >
+                        <Plus size={20} />
+                    </button>
+                </div>
             </div>
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -214,6 +234,9 @@ export default function ManageCustomersPage() {
                             className="w-full pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
+                    <button onClick={fetchCustomers} className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" title="Refresh List">
+                        <RefreshCw size={20} />
+                    </button>
                     <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition-colors">
                         <Plus size={20} />
                         <span>Add Customer</span>
@@ -242,7 +265,7 @@ export default function ManageCustomersPage() {
                                     <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2">{customer.full_name}</h3>
                                     <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                         {customer.customer_id && <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{customer.customer_id}</span>}
-                                        <span className="truncate">{getActivePackage(customer)}</span>
+                                        <span className="truncate font-medium text-indigo-600 dark:text-indigo-400">{getActivePackage(customer)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -312,12 +335,20 @@ export default function ManageCustomersPage() {
                                 </span>
                             </td>
                             <td className="p-4 text-right">
-                                <button 
-                                onClick={() => router.push(`/superadmin/customers/${customer.id}`)}
-                                className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 font-medium inline-flex items-center gap-1"
-                                >
-                                View <Eye size={16} />
-                                </button>
+                                <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                    onClick={() => router.push(`/superadmin/customers/${customer.id}`)}
+                                    className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 font-medium inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                                    >
+                                    <Eye size={18} /> View
+                                    </button>
+                                    <button 
+                                    onClick={() => handleDelete(customer.id)}
+                                    className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                    >
+                                    <Trash2 size={18} />
+                                    </button>
+                                </div>
                             </td>
                             </tr>
                         ))

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { 
   User, MapPin, Phone, Hash, CreditCard, Tv, 
   Package, Plus, Trash2, FileText, ArrowLeft, Loader2, Check,
-  Edit, Save, X, Tag, AlertTriangle, Calendar, Clock, Search 
+  Edit, Save, X, Tag, AlertTriangle, Calendar, Clock, Search, Ban
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -174,15 +174,20 @@ export default function CustomerDetailsPage() {
     const { data: userData } = await supabase.from('users').select('*').eq('id', customerId).single();
     setCustomer(userData);
 
-    const { data: subData } = await supabase
+    // FETCH SUBSCRIPTION (Updated to handle potential multiple rows gracefully)
+    const { data: subData, error: subError } = await supabase
       .from('subscriptions')
       .select('*, packages(*)')
       .eq('user_id', customerId)
       .eq('status', 'active')
+      .order('created_at', { ascending: false }) // Get latest if duplicates exist
+      .limit(1)
       .maybeSingle(); 
     
+    if (subError) console.error('Fetch Subscription Error:', subError);
     setSubscription(subData);
 
+    // Only fetch addons if we have an active subscription
     if (subData) {
       const { data: addonData } = await supabase
         .from('subscription_addons')
@@ -216,10 +221,12 @@ export default function CustomerDetailsPage() {
 
   // --- ACTIONS ---
 
+  // 1. Assign or Change Plan
   const handleAssignPlan = async (newPlanId) => {
     setActionLoading(true);
     try {
       if (subscription) {
+        // CASE A: Smart Switch (Pro-rata)
         const { data, error } = await supabase.rpc('switch_plan', {
           sub_id: subscription.id,
           new_pkg_id: newPlanId
@@ -227,11 +234,10 @@ export default function CustomerDetailsPage() {
         if (error) throw error;
         alert(data.message + (data.invoice_amount ? ` (Invoice: ₹${data.invoice_amount})` : ''));
       } else {
-        const { error } = await supabase.from('subscriptions').insert({
-          user_id: customerId,
-          package_id: newPlanId,
-          status: 'active',
-          next_billing_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString()
+        // CASE B: New Subscription (USING NEW SAFE RPC)
+        const { error } = await supabase.rpc('assign_new_plan', {
+            p_user_id: customerId,
+            p_package_id: newPlanId
         });
         if (error) throw error;
       }
@@ -243,6 +249,30 @@ export default function CustomerDetailsPage() {
     setActionLoading(false);
   };
 
+  // 2. Remove Plan (Deactivates Customer)
+  const handleRemovePlan = async () => {
+    if (!subscription) return;
+    if (!confirm("Are you sure you want to remove the plan? This will deactivate the customer and hide their add-ons.")) return;
+
+    setActionLoading(true);
+    try {
+        // Setting status to 'cancelled' removes it from active view
+        // Add-ons are linked to this subscription ID so they effectively disappear from active view too
+        const { error } = await supabase
+            .from('subscriptions')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', subscription.id);
+
+        if (error) throw error;
+        
+        await fetchData(); 
+    } catch (error) {
+        alert('Error removing plan: ' + error.message);
+    }
+    setActionLoading(false);
+  };
+
+  // 3. Toggle Channels
   const handleToggleChannel = async (channelId, isCurrentlyActive) => {
     if (!subscription) {
       alert("Please assign a base plan first.");
@@ -259,6 +289,7 @@ export default function CustomerDetailsPage() {
     setAddons(addonData || []);
   };
 
+  // 4. Generate Invoice
   const handleGenerateInvoice = async () => {
     if (!subscription) return;
     if (!confirm("Generate a new invoice for the current month?")) return;
@@ -275,6 +306,7 @@ export default function CustomerDetailsPage() {
     setActionLoading(false);
   };
 
+  // 5. Profile Editing
   const handleStartEdit = () => {
     setEditFormData({
       full_name: customer.full_name || '',
@@ -309,6 +341,7 @@ export default function CustomerDetailsPage() {
     setActionLoading(false);
   };
 
+  // 6. Delete Customer
   const handleDeleteCustomer = async () => {
     if (!confirm('Are you sure you want to delete this customer? This action cannot be undone and will remove all billing history.')) return;
     setActionLoading(true);
@@ -336,6 +369,12 @@ export default function CustomerDetailsPage() {
   const nextBillingDate = subscription?.next_billing_date 
     ? new Date(subscription.next_billing_date).toLocaleDateString() 
     : 'N/A';
+
+  // DYNAMIC STATUS: Determined by presence of active subscription
+  const customerStatus = subscription ? 'Active' : 'Inactive';
+  const statusColor = subscription 
+    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-800' 
+    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-red-200 dark:border-red-800';
 
 
   return (
@@ -483,6 +522,15 @@ export default function CustomerDetailsPage() {
               )}
             </div>
           </div>
+          
+          {/* DYNAMIC STATUS BADGE */}
+          {!isEditing && (
+             <div className="mt-4 md:mt-0 md:absolute md:bottom-8 md:right-8 text-center md:text-right">
+                <span className={`inline-block px-4 py-1.5 rounded-full text-sm font-bold border ${statusColor}`}>
+                    {customerStatus}
+                </span>
+             </div>
+          )}
         </div>
 
         {/* Cards Grid */}
@@ -497,12 +545,24 @@ export default function CustomerDetailsPage() {
                 <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                   <Package size={20} className="text-indigo-500"/> Current Plan
                 </h2>
-                <button 
-                  onClick={() => setIsPlanModalOpen(true)}
-                  className="text-sm px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-all font-medium shadow-sm active:scale-95"
-                >
-                  {subscription ? 'Change' : 'Assign'}
-                </button>
+                <div className="flex gap-2">
+                    {/* NEW DELETE BUTTON FOR PLAN */}
+                    {subscription && (
+                        <button 
+                            onClick={handleRemovePlan}
+                            className="p-2 text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                            title="Remove Plan"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                    )}
+                    <button 
+                        onClick={() => setIsPlanModalOpen(true)}
+                        className="text-sm px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-all font-medium shadow-sm active:scale-95"
+                    >
+                        {subscription ? 'Change' : 'Assign'}
+                    </button>
+                </div>
               </div>
               <div className="p-5">
                 {subscription ? (
@@ -565,7 +625,7 @@ export default function CustomerDetailsPage() {
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500 text-sm">
-                    No add-on channels active.
+                    {subscription ? 'No add-on channels active.' : 'Assign a plan to add channels.'}
                   </div>
                 )}
               </div>
@@ -583,7 +643,7 @@ export default function CustomerDetailsPage() {
               </div>
               <div className="p-5 flex-1 flex flex-col">
                 
-                {/* Reverted to Blue Bordered Transparent Card as requested */}
+                {/* Blue Bordered Transparent Card (Desktop) */}
                 <div className="mb-6 p-5 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 text-center">
                   <p className="text-sm text-gray-500 dark:text-indigo-300 mb-2 font-medium">Estimated Monthly Bill</p>
                   <p className="text-4xl font-bold text-indigo-700 dark:text-white">

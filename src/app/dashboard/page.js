@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client';
 
 // --- UI COMPONENTS ---
 
-const StatCard = ({ title, value, icon, color, subtext }) => (
-  <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300">
+const StatCard = ({ title, value, icon, color, subtext, details }) => (
+  <div className="bg-white dark:bg-gray-800 p-6 sm:px-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 flex flex-col justify-between min-h-[140px]">
     <div className="flex items-start justify-between">
       <div className="flex items-center">
         <div className={`p-3 rounded-xl mr-4 text-white shadow-md ${color}`}>
@@ -19,7 +19,22 @@ const StatCard = ({ title, value, icon, color, subtext }) => (
         </div>
       </div>
     </div>
-    {subtext && <p className="text-xs text-gray-400 mt-4">{subtext}</p>}
+    
+    {/* Render Breakdown Details if provided */}
+    {details ? (
+        <div className="mt-4 flex items-center gap-3 text-xs font-medium">
+            <span className="flex items-center gap-1 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-md border border-green-100 dark:border-green-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                {details.active} Active
+            </span>
+            <span className="flex items-center gap-1 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md border border-red-100 dark:border-red-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                {details.inactive} Inactive
+            </span>
+        </div>
+    ) : (
+        subtext && <p className="text-xs text-gray-400 mt-4">{subtext}</p>
+    )}
   </div>
 );
 
@@ -110,9 +125,11 @@ const SuperAdminDashboard = ({ user }) => {
   const supabase = createClient();
   
   // Dashboard State
-  const [revenueView, setRevenueView] = useState('monthly'); // 'daily' | 'monthly'
+  const [revenueView, setRevenueView] = useState('monthly'); 
   const [stats, setStats] = useState({ 
     customers: 0, 
+    activeCustomers: 0,
+    inactiveCustomers: 0,
     subscriptions: 0, 
     employees: 0 
   });
@@ -125,36 +142,52 @@ const SuperAdminDashboard = ({ user }) => {
   // Fetch General Stats (One-time)
   useEffect(() => {
     const fetchGeneralStats = async () => {
+      // 1. Total Customers
       const { count: customersCount } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer');
-      const { count: employeesCount } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee');
-      const { count: subsCount } = await supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active');
       
+      // 2. Active Subscriptions & Unique Active Users
+      const { data: activeSubs } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('status', 'active');
+        
+      // Count unique user IDs to get accurate "Active Customer" count
+      // This fixes the issue where multiple subs per user (from testing) inflated the active count
+      const uniqueActiveUserIds = new Set(activeSubs?.map(sub => sub.user_id));
+      const activeCustomersCount = uniqueActiveUserIds.size;
+      const activeSubscriptionsCount = activeSubs?.length || 0;
+      
+      // 3. Employees
+      const { count: employeesCount } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee');
+      
+      const total = customersCount || 0;
+      // Inactive is Total - Unique Active
+      const inactive = Math.max(0, total - activeCustomersCount); 
+
       setStats({
-        customers: customersCount || 0,
-        subscriptions: subsCount || 0,
+        customers: total,
+        activeCustomers: activeCustomersCount,
+        inactiveCustomers: inactive,
+        subscriptions: activeSubscriptionsCount, 
         employees: employeesCount || 0
       });
     };
     fetchGeneralStats();
   }, [supabase]);
 
-  // Fetch Financials (Depends on revenueView toggle)
+  // Fetch Financials
   useEffect(() => {
     const fetchFinancials = async () => {
         setLoading(true);
         const now = new Date();
         let startDate;
 
-        // Determine date range filter
         if (revenueView === 'daily') {
-            // Start of today (00:00:00)
             startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         } else {
-            // Start of this month (1st 00:00:00)
             startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         }
 
-        // Fetch invoices created/issued in this range
         const { data: invoices } = await supabase
             .from('invoices')
             .select('amount_due, amount_paid, status, issued_date')
@@ -165,10 +198,7 @@ const SuperAdminDashboard = ({ user }) => {
 
         if (invoices) {
             invoices.forEach(inv => {
-                // Calculate Paid Total
                 paidTotal += (inv.amount_paid || 0);
-
-                // Calculate Pending Total
                 if (inv.status === 'pending' || inv.status === 'overdue') {
                     pendingTotal += (inv.amount_due - (inv.amount_paid || 0));
                 }
@@ -214,7 +244,7 @@ const SuperAdminDashboard = ({ user }) => {
             value={stats.customers} 
             icon={<Users size={24}/>} 
             color="bg-blue-500" 
-            subtext="Active subscriber base"
+            details={{ active: stats.activeCustomers, inactive: stats.inactiveCustomers }}
         />
         <StatCard 
             title="Active Plans" 
@@ -288,7 +318,6 @@ export default function DashboardPage() {
                 .eq('id', session.user.id)
                 .single();
             
-            // Set role from DB, fallback to 'customer'
             setRole(userProfile?.role || 'customer');
         }
         setLoading(false);
@@ -306,8 +335,6 @@ export default function DashboardPage() {
   
   if (!session) return <div className="p-10 text-center">Please log in.</div>;
 
-  // Render based on role
-  // Container now has px-6 for mobile (previously p-4) to add better horizontal padding as requested
   return (
     <div className="px-6 py-6 sm:p-10 max-w-7xl mx-auto">
         {(() => {
