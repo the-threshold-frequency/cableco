@@ -1,31 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, Search, X, User, Phone, Edit, Trash2, 
-  Loader2, Users, ShieldCheck, Save, Calendar, TrendingUp, DollarSign, History
+  Loader2, Users, ShieldCheck, Save, Calendar, TrendingUp, History
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { createEmployeeAction } from '@/app/actions/createEmployee';
 import { updateEmployeeAction } from '@/app/actions/updateEmployee';
 
-// --- MODAL: EMPLOYEE HISTORY & STATS (NEW) ---
+// --- MODAL: EMPLOYEE HISTORY & STATS ---
 const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ today: 0, month: 0 });
   const supabase = createClient();
 
-  useEffect(() => {
-    if (isOpen && employee) {
-      fetchHistory();
-    }
-  }, [isOpen, employee]);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
+    if (!employee) return;
     setLoading(true);
     
-    // 1. Fetch recent payments by this employee
+    // 1. Fetch recent payments
     const { data: payments, error } = await supabase
       .from('payments')
       .select(`
@@ -35,27 +30,24 @@ const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
       .eq('collected_by', employee.id)
       .eq('status', 'paid')
       .order('payment_date', { ascending: false })
-      .limit(50); // Fetch last 50 for history
+      .limit(50);
 
-    if (error) console.error(error);
+    if (error) console.error('History fetch error:', error);
     
+    // 2. Calculate Stats
     const todayStr = new Date().toISOString().split('T')[0];
-    const monthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const monthStr = new Date().toISOString().slice(0, 7); 
 
     let todayTotal = 0;
     let monthTotal = 0;
 
-    // Calculate totals from the fetched batch (approximate) or fetch specific aggregates if needed.
-    // For exact large scale totals, you might want a separate RPC, but JS calc is fine for <1000 records.
-    // Let's do a quick separate aggregate query for perfect accuracy.
-    
-    // Aggregate Query for Today & Month
+    // Fetch aggregates for accurate totals
     const { data: allPayments } = await supabase
         .from('payments')
         .select('amount, payment_date')
         .eq('collected_by', employee.id)
         .eq('status', 'paid')
-        .gte('payment_date', `${monthStr}-01`); // Fetch only this month for calc
+        .gte('payment_date', `${monthStr}-01`); 
 
     if (allPayments) {
         allPayments.forEach(p => {
@@ -68,16 +60,19 @@ const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
     setStats({ today: todayTotal, month: monthTotal });
     setHistory(payments || []);
     setLoading(false);
-  };
+  }, [employee, supabase]);
+
+  useEffect(() => {
+    if (isOpen && employee) {
+      fetchHistory();
+    }
+  }, [isOpen, employee, fetchHistory]);
 
   if (!isOpen || !employee) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-end transition-all">
-      {/* Slide-over Panel */}
       <div className="bg-white dark:bg-gray-800 w-full max-w-md h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
-        
-        {/* Header */}
         <div className="p-6 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
           <div>
             <h3 className="text-xl font-bold text-gray-800 dark:text-white">{employee.full_name}</h3>
@@ -90,7 +85,6 @@ const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
           </button>
         </div>
 
-        {/* Stats Grid */}
         <div className="p-6 grid grid-cols-2 gap-4 bg-white dark:bg-gray-800">
             <div className="p-4 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800">
                 <p className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -106,7 +100,6 @@ const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
             </div>
         </div>
 
-        {/* Transaction History */}
         <div className="flex-1 overflow-y-auto p-6 pt-0 custom-scrollbar">
             <h4 className="font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                 <History size={16}/> Recent Collections
@@ -133,7 +126,6 @@ const EmployeeHistoryModal = ({ isOpen, onClose, employee }) => {
                 </div>
             )}
         </div>
-
       </div>
     </div>
   );
@@ -303,8 +295,9 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onUpdateEmployee }) => {
                 className="pl-10 w-full p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono tracking-wide" 
               />
             </div>
+            {/* FIXED: Unescaped entity fixed here */}
             <p className="text-[10px] text-orange-500 mt-2 ml-1">
-              * Changing this will change the user's login phone number.
+              * Changing this will change the user&apos;s login phone number.
             </p>
           </div>
           
@@ -326,17 +319,14 @@ export default function ManageEmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false); // NEW
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
-  // Fetch employees and calculate stats
-  const fetchEmployeesData = async () => {
+  const fetchEmployeesData = useCallback(async () => {
     setLoading(true);
     
-    // 1. Fetch Employees
     const { data: empData, error: empError } = await supabase
       .from('users')
       .select('*')
@@ -348,25 +338,21 @@ export default function ManageEmployeesPage() {
         return;
     }
 
-    // 2. Fetch Customers
     const { data: custData } = await supabase
         .from('users')
         .select('id, assigned_to')
         .eq('role', 'customer');
 
-    // 3. Fetch Invoices
     const { data: invData } = await supabase
         .from('invoices')
         .select('user_id, amount_due, amount_paid, status')
         .neq('status', 'paid'); 
 
-    // 4. Fetch Payments
     const { data: payData } = await supabase
         .from('payments')
         .select('amount, collected_by, status')
         .eq('status', 'paid'); 
 
-    // --- AGGREGATION LOGIC ---
     const processedEmployees = empData.map(emp => {
         const myCustomers = custData?.filter(c => c.assigned_to === emp.id) || [];
         const myCustomerIds = myCustomers.map(c => c.id);
@@ -391,13 +377,12 @@ export default function ManageEmployeesPage() {
 
     setEmployees(processedEmployees);
     setLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     fetchEmployeesData();
-  }, []);
+  }, [fetchEmployeesData]);
 
-  // --- HANDLERS ---
   const handleAddEmployee = async (employeeData) => {
     const result = await createEmployeeAction(employeeData);
     if (result.success) {
@@ -447,7 +432,7 @@ export default function ManageEmployeesPage() {
 
       <EditEmployeeModal 
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => setIsEditModalOpen(false)} 
         employee={selectedEmployee}
         onUpdateEmployee={handleUpdateEmployee}
       />
@@ -460,7 +445,6 @@ export default function ManageEmployeesPage() {
 
       <div className="p-4 sm:p-6 md:p-10 max-w-7xl mx-auto min-h-screen">
         
-        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white tracking-tight">Staff & Agents</h1>
@@ -475,7 +459,6 @@ export default function ManageEmployeesPage() {
           </button>
         </div>
 
-        {/* Search Bar */}
         <div className="mb-6 relative max-w-md group">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
             <input
@@ -487,7 +470,6 @@ export default function ManageEmployeesPage() {
             />
         </div>
 
-        {/* Employees Table */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -512,8 +494,6 @@ export default function ManageEmployeesPage() {
                       onClick={() => openHistoryModal(employee)} 
                       className="group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors duration-200 cursor-pointer"
                     >
-                      
-                      {/* Name & Phone */}
                       <td className="p-5">
                         <div className="flex items-center gap-4">
                             <div className="h-11 w-11 rounded-full bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/50 dark:to-purple-900/50 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-300 font-bold shadow-sm group-hover:scale-110 transition-transform">
@@ -528,15 +508,11 @@ export default function ManageEmployeesPage() {
                             </div>
                         </div>
                       </td>
-
-                      {/* Assigned Count */}
                       <td className="p-5 text-center">
                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
                             <Users size={12} className="mr-1.5 opacity-70"/> {employee.stats.totalCustomers}
                          </span>
                       </td>
-
-                      {/* Pending Amount */}
                       <td className="p-5 text-right">
                          <div className="flex flex-col items-end">
                              <span className={`font-mono font-bold text-sm ${employee.stats.pendingAmount > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-400'}`}>
@@ -545,8 +521,6 @@ export default function ManageEmployeesPage() {
                              {employee.stats.pendingAmount > 0 && <span className="text-[10px] text-orange-400 uppercase font-bold tracking-wide">Due</span>}
                          </div>
                       </td>
-
-                      {/* Collected Amount */}
                       <td className="p-5 text-right">
                          <div className="flex items-center justify-end gap-2">
                              <span className="font-mono font-bold text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-md border border-green-100 dark:border-green-800">
@@ -554,8 +528,6 @@ export default function ManageEmployeesPage() {
                              </span>
                          </div>
                       </td>
-
-                      {/* AESTHETIC ACTIONS */}
                       <td className="p-5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
                             <button 
@@ -574,7 +546,6 @@ export default function ManageEmployeesPage() {
                             </button>
                         </div>
                       </td>
-
                     </tr>
                   ))
                 )}
