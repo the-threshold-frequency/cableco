@@ -1,13 +1,574 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   User, MapPin, Phone, Hash, CreditCard, Tv, 
   Package, Plus, Trash2, FileText, ArrowLeft, Loader2, Check,
-  Edit, Save, X, Tag, AlertTriangle, Calendar, Clock, Search, Ban
+  Edit, Save, X, Tag, AlertTriangle, Calendar as CalendarIcon, Clock, Search, Ban, History, DollarSign,
+  ChevronLeft, ChevronRight, Receipt, CheckCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+
+// --- CUSTOM DATE PICKER COMPONENT ---
+const CustomDatePicker = ({ label, value, onChange, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(value ? new Date(value) : new Date());
+  const containerRef = useRef(null);
+
+  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
+  
+  const handleDateClick = (day) => {
+    const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+    const formatted = newDate.toLocaleDateString('en-CA'); 
+    onChange(formatted);
+    setIsOpen(false);
+  };
+
+  const changeMonth = (offset) => {
+    setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1));
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className={`relative ${disabled ? 'opacity-50 pointer-events-none' : ''}`} ref={containerRef}>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+      <div 
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none flex items-center justify-between cursor-pointer ${disabled ? 'cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'focus:border-indigo-500'}`}
+      >
+        <span>{value ? new Date(value).toLocaleDateString() : 'Pending...'}</span>
+        <CalendarIcon size={16} className="text-gray-400"/>
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="absolute top-full left-0 mt-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 w-64 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={(e) => { e.preventDefault(); changeMonth(-1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronLeft size={16} className="text-gray-600 dark:text-gray-300"/></button>
+            <span className="font-bold text-gray-800 dark:text-white text-sm">
+              {viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+            </span>
+            <button onClick={(e) => { e.preventDefault(); changeMonth(1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronRight size={16} className="text-gray-600 dark:text-gray-300"/></button>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {['S','M','T','W','T','F','S'].map((d, i) => <span key={i} className="text-[10px] text-gray-400 font-bold">{d}</span>)}
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const isSelected = value && new Date(value).getDate() === day && new Date(value).getMonth() === viewDate.getMonth() && new Date(value).getFullYear() === viewDate.getFullYear();
+              return (
+                <button
+                  key={day}
+                  onClick={(e) => { e.preventDefault(); handleDateClick(day); }}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full text-sm transition-colors ${
+                    isSelected 
+                      ? 'bg-indigo-600 text-white font-bold' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- CUSTOM MONTH PICKER COMPONENT ---
+const CustomMonthPicker = ({ label, value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(value ? parseInt(value.split('-')[0]) : new Date().getFullYear());
+  const containerRef = useRef(null);
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handleMonthClick = (monthIndex) => {
+    const monthStr = (monthIndex + 1).toString().padStart(2, '0');
+    onChange(`${viewYear}-${monthStr}`);
+    setIsOpen(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500 flex items-center justify-between cursor-pointer"
+      >
+        <span>
+            {value ? new Date(value + '-01').toLocaleDateString('default', { month: 'long', year: 'numeric' }) : 'Select Month'}
+        </span>
+        <CalendarIcon size={16} className="text-gray-400"/>
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 w-64 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={(e) => { e.preventDefault(); setViewYear(viewYear - 1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronLeft size={16} className="text-gray-600 dark:text-gray-300"/></button>
+            <span className="font-bold text-gray-800 dark:text-white text-sm">{viewYear}</span>
+            <button onClick={(e) => { e.preventDefault(); setViewYear(viewYear + 1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronRight size={16} className="text-gray-600 dark:text-gray-300"/></button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2">
+            {months.map((m, i) => {
+              const isSelected = value && parseInt(value.split('-')[1]) === (i + 1) && parseInt(value.split('-')[0]) === viewYear;
+              return (
+                <button
+                  key={m}
+                  onClick={(e) => { e.preventDefault(); handleMonthClick(i); }}
+                  className={`py-2 text-xs rounded-lg transition-colors ${
+                    isSelected 
+                      ? 'bg-indigo-600 text-white font-bold' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// --- MODAL: PAYMENT HISTORY & ENTRY ---
+const PaymentHistoryModal = ({ isOpen, onClose, customerId, activeSubscription, activeAddons, allPlans, allChannels, employees, initialView = 'list' }) => {
+  const [view, setView] = useState(initialView);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [addonSearch, setAddonSearch] = useState(''); 
+  const [editingId, setEditingId] = useState(null); // Track ID for edits
+  const supabase = createClient();
+
+  const [formData, setFormData] = useState({
+    paymentDate: new Date().toISOString().split('T')[0],
+    billingMonth: new Date().toISOString().slice(0, 7),
+    packageId: '',
+    addonIds: [],
+    amount: '',
+    collectedBy: '',
+    status: 'paid', 
+    method: 'cash',
+    notes: ''
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      setView(initialView);
+      fetchPayments();
+      resetForm();
+    }
+  }, [isOpen, initialView]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({
+      packageId: activeSubscription?.package_id || '',
+      addonIds: activeAddons.map(a => a.channel_id),
+      amount: calculateTotal(activeSubscription?.package_id, activeAddons.map(a => a.channel_id)),
+      status: 'paid',
+      method: 'cash',
+      paymentDate: new Date().toISOString().split('T')[0],
+      billingMonth: new Date().toISOString().slice(0, 7),
+      notes: '',
+      collectedBy: ''
+    });
+    setAddonSearch('');
+  };
+
+  const fetchPayments = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        collected_by_user:users!payments_collected_by_fkey ( full_name )
+      `)
+      .eq('user_id', customerId)
+      .order('payment_date', { ascending: false });
+    
+    if (error) console.error('Full Error:', JSON.stringify(error, null, 2));
+    else setPayments(data || []);
+    setLoading(false);
+  };
+
+  const calculateTotal = (pkgId, addonIds) => {
+    const pkgPrice = allPlans.find(p => p.id === pkgId)?.price || 0;
+    const addonsPrice = addonIds.reduce((sum, id) => {
+        const ch = allChannels.find(c => c.id === id);
+        return sum + (ch?.price || 0);
+    }, 0);
+    return (pkgPrice + addonsPrice).toFixed(2);
+  };
+
+  useEffect(() => {
+    if (view === 'add' && !editingId) { // Only auto-calc if NOT editing
+        const total = calculateTotal(formData.packageId, formData.addonIds);
+        setFormData(prev => ({ ...prev, amount: total }));
+    }
+  }, [formData.packageId, formData.addonIds, view]);
+
+  const handleToggleAddon = (id) => {
+    setFormData(prev => {
+        const newIds = prev.addonIds.includes(id) 
+            ? prev.addonIds.filter(x => x !== id)
+            : [...prev.addonIds, id];
+        return { ...prev, addonIds: newIds };
+    });
+  };
+
+  // --- ACTIONS ---
+  
+  const handleEditClick = (payment) => {
+    setEditingId(payment.id);
+    
+    setFormData({
+        paymentDate: payment.payment_date || '',
+        billingMonth: payment.billing_month.slice(0, 7),
+        amount: payment.amount,
+        status: payment.status,
+        method: payment.method,
+        notes: payment.notes || '',
+        collectedBy: payment.collected_by || '',
+        packageId: '', 
+        addonIds: []   
+    });
+    setView('add');
+  };
+
+  const handleQuickPay = async (id) => {
+    if(!confirm("Mark this pending payment as PAID today?")) return;
+    const { error } = await supabase.from('payments').update({
+        status: 'paid',
+        payment_date: new Date().toISOString()
+    }).eq('id', id);
+    
+    if (error) alert(error.message);
+    else fetchPayments();
+  };
+
+  const handleSavePayment = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    if (formData.status === 'paid' && !formData.paymentDate) {
+        alert("Please select a Payment Date for paid records.");
+        setLoading(false);
+        return;
+    }
+
+    const payload = {
+        amount: parseFloat(formData.amount),
+        payment_date: formData.status === 'pending' ? null : formData.paymentDate,
+        billing_month: `${formData.billingMonth}-01`,
+        collected_by: formData.collectedBy || null,
+        status: formData.status,
+        method: formData.method,
+        notes: formData.notes
+    };
+
+    if (!editingId) {
+        const pkgName = allPlans.find(p => p.id === formData.packageId)?.name || 'Custom';
+        const addonNames = formData.addonIds.map(id => allChannels.find(c => c.id === id)?.name).filter(Boolean);
+        payload.user_id = customerId;
+        payload.package_name = pkgName;
+        payload.addon_names = addonNames;
+    }
+
+    const query = editingId 
+        ? supabase.from('payments').update(payload).eq('id', editingId)
+        : supabase.from('payments').insert(payload);
+
+    const { error } = await query;
+
+    if (error) {
+        alert('Error saving: ' + error.message);
+    } else {
+        await fetchPayments();
+        if(editingId) setView('list');
+        else onClose(); 
+    }
+    setLoading(false);
+  };
+
+  const filteredChannels = allChannels.filter(c => 
+    c.name.toLowerCase().includes(addonSearch.toLowerCase())
+  );
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-end sm:items-center p-0 sm:p-4 backdrop-blur-sm transition-all">
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1;
+          border-radius: 9999px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+          }
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+        }
+      `}</style>
+      <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-2xl p-6 h-[90vh] sm:h-[85vh] flex flex-col animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+        
+        <div className="flex justify-between items-center mb-6 shrink-0">
+           <div>
+             <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                {view === 'add' ? (editingId ? <Edit className="text-indigo-500"/> : <Plus className="text-indigo-500"/>) : <History className="text-indigo-500"/>} 
+                {view === 'add' ? (editingId ? 'Edit Payment' : 'Record New Payment') : 'Payment History'}
+             </h3>
+             <p className="text-sm text-gray-500 dark:text-gray-400">
+                {view === 'add' ? 'Enter payment details' : 'View all past transactions'}
+             </p>
+           </div>
+           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><X size={20}/></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+            {view === 'list' ? (
+                <div className="space-y-3">
+                    {payments.length === 0 ? (
+                        <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                            No payment history found.
+                        </div>
+                    ) : (
+                        payments.map(pay => (
+                            <div key={pay.id} className="p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900/30 flex justify-between items-center group">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-bold text-gray-800 dark:text-white">₹{pay.amount}</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                                            pay.status === 'paid' 
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                                            : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                        }`}>
+                                            {pay.status || 'paid'}
+                                        </span>
+                                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 uppercase">
+                                            {pay.method}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                        {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString() : 'Pending'} • For {new Date(pay.billing_month).toLocaleDateString('default', { month: 'long', year: 'numeric' })}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {pay.package_name} {pay.addon_names?.length > 0 && `+ ${pay.addon_names.length} Addons`}
+                                    </p>
+                                </div>
+                                
+                                <div className="flex items-center gap-2">
+                                    {/* QUICK ACTIONS */}
+                                    {pay.status === 'pending' && (
+                                        <button 
+                                            onClick={() => handleQuickPay(pay.id)}
+                                            className="p-2 text-green-600 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 rounded-full transition-colors"
+                                            title="Mark as Paid Today"
+                                        >
+                                            <CheckCircle size={18} />
+                                        </button>
+                                    )}
+                                    <button 
+                                        onClick={() => handleEditClick(pay)}
+                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                                        title="Edit Payment"
+                                    >
+                                        <Edit size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            ) : (
+                <form onSubmit={handleSavePayment} className="space-y-4">
+                    {/* Row 1: Dates & Status */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</label>
+                            <select 
+                                value={formData.status} 
+                                onChange={e => {
+                                    const newStatus = e.target.value;
+                                    setFormData({
+                                        ...formData, 
+                                        status: newStatus,
+                                        paymentDate: newStatus === 'pending' ? '' : new Date().toISOString().split('T')[0]
+                                    });
+                                }} 
+                                className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"
+                            >
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                            </select>
+                        </div>
+                        <div>
+                            <CustomDatePicker 
+                                label="Payment Date"
+                                value={formData.paymentDate}
+                                onChange={(date) => setFormData({...formData, paymentDate: date})}
+                                disabled={formData.status === 'pending'} 
+                            />
+                        </div>
+                        <div>
+                            <CustomMonthPicker 
+                                label="Billing Month"
+                                value={formData.billingMonth}
+                                onChange={(month) => setFormData({...formData, billingMonth: month})}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Row 2: Collected By & Base Plan */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Collected By</label>
+                            <select required value={formData.collectedBy} onChange={e => setFormData({...formData, collectedBy: e.target.value})} className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500">
+                                <option value="">Select Employee</option>
+                                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                            </select>
+                        </div>
+                        
+                        {/* Hide Plan/Addon Selection if Editing */}
+                        {!editingId && (
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Base Plan</label>
+                                <select value={formData.packageId} onChange={e => setFormData({...formData, packageId: e.target.value})} className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500">
+                                    <option value="">Select Plan</option>
+                                    {allPlans.map(p => <option key={p.id} value={p.id}>{p.name} (₹{p.price})</option>)}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Channel Search (Hide on Edit) */}
+                    {!editingId && (
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Select Add-ons</label>
+                                <div className="relative w-1/2">
+                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400"/>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search..." 
+                                        value={addonSearch}
+                                        onChange={(e) => setAddonSearch(e.target.value)}
+                                        className="w-full pl-7 p-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border-none focus:ring-0 text-gray-800 dark:text-gray-200 placeholder-gray-400"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 custom-scrollbar">
+                                {filteredChannels.length > 0 ? filteredChannels.map(c => (
+                                    <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded">
+                                        <input type="checkbox" checked={formData.addonIds.includes(c.id)} onChange={() => handleToggleAddon(c.id)} className="rounded text-indigo-600 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-indigo-500"/>
+                                        <span className="flex-1 truncate dark:text-gray-300">{c.name}</span>
+                                        <span className="text-gray-400">₹{c.price}</span>
+                                    </label>
+                                )) : (
+                                    <p className="text-xs text-gray-400 col-span-2 text-center py-2">No channels found</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Row 4: Total Amount & Payment Method */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Amount (₹)</label>
+                            <input type="number" step="0.01" required value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 rounded-lg text-sm font-bold text-indigo-700 dark:text-indigo-400 outline-none focus:border-indigo-500"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Payment Method</label>
+                            <select 
+                                required
+                                value={formData.method} 
+                                onChange={e => setFormData({...formData, method: e.target.value})} 
+                                className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"
+                            >
+                                <option value="cash">Cash</option>
+                                <option value="upi">UPI / Online</option>
+                                <option value="card">Card</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes (Optional)</label>
+                        <input type="text" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Check no, UPI ref, etc." className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"/>
+                    </div>
+                </form>
+            )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            {view === 'list' ? (
+                <div className="flex gap-3">
+                    <button onClick={() => { resetForm(); setView('add'); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                        <Plus size={18}/> Record New Payment
+                    </button>
+                    <button onClick={onClose} className="px-5 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors">
+                        Close
+                    </button>
+                </div>
+            ) : (
+                <div className="flex gap-3">
+                    <button onClick={() => setView('list')} className="px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors">
+                        Cancel
+                    </button>
+                    <button onClick={handleSavePayment} disabled={loading} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                        {loading && <Loader2 className="animate-spin h-4 w-4"/>} {editingId ? 'Update Payment' : 'Save Payment'}
+                    </button>
+                </div>
+            )}
+        </div>
+
+      </div>
+    </div>
+  );
+};
 
 // --- MODAL: CHANGE PLAN ---
 const ChangePlanModal = ({ isOpen, onClose, plans, currentPlanId, onAssignPlan, loading }) => {
@@ -148,15 +709,19 @@ export default function CustomerDetailsPage() {
   const [subscription, setSubscription] = useState(null);
   const [addons, setAddons] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [recentPayments, setRecentPayments] = useState([]); 
   
   const [availablePlans, setAvailablePlans] = useState([]);
   const [availableChannels, setAvailableChannels] = useState([]);
+  const [employees, setEmployees] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentModalView, setPaymentModalView] = useState('list'); 
 
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({
@@ -174,20 +739,20 @@ export default function CustomerDetailsPage() {
     const { data: userData } = await supabase.from('users').select('*').eq('id', customerId).single();
     setCustomer(userData);
 
-    // FETCH SUBSCRIPTION (Updated to handle potential multiple rows gracefully)
+    // Fetch active subscription
     const { data: subData, error: subError } = await supabase
       .from('subscriptions')
       .select('*, packages(*)')
       .eq('user_id', customerId)
       .eq('status', 'active')
-      .order('created_at', { ascending: false }) // Get latest if duplicates exist
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(); 
     
     if (subError) console.error('Fetch Subscription Error:', subError);
     setSubscription(subData);
 
-    // Only fetch addons if we have an active subscription
+    // Only fetch addons if active subscription exists
     if (subData) {
       const { data: addonData } = await supabase
         .from('subscription_addons')
@@ -205,11 +770,24 @@ export default function CustomerDetailsPage() {
       .order('issued_date', { ascending: false });
     setInvoices(invoiceData || []);
 
+    // FETCH RECENT PAYMENTS
+    const { data: paymentData } = await supabase
+      .from('payments')
+      .select('id, amount, payment_date, status, method')
+      .eq('user_id', customerId)
+      .order('payment_date', { ascending: false })
+      .limit(3);
+    setRecentPayments(paymentData || []);
+
     const { data: plans } = await supabase.from('packages').select('*').eq('is_active', true);
     setAvailablePlans(plans || []);
     
     const { data: channels } = await supabase.from('channels').select('*').eq('is_active', true);
     setAvailableChannels(channels || []);
+
+    // Fetch Employees
+    const { data: empData } = await supabase.from('users').select('id, full_name').eq('role', 'employee');
+    setEmployees(empData || []);
 
     setLoading(false);
   };
@@ -217,6 +795,11 @@ export default function CustomerDetailsPage() {
   useEffect(() => {
     if (customerId) fetchData();
   }, [customerId]);
+
+  const openPaymentModal = (view) => {
+      setPaymentModalView(view);
+      setIsPaymentModalOpen(true);
+  };
 
 
   // --- ACTIONS ---
@@ -226,7 +809,6 @@ export default function CustomerDetailsPage() {
     setActionLoading(true);
     try {
       if (subscription) {
-        // CASE A: Smart Switch (Pro-rata)
         const { data, error } = await supabase.rpc('switch_plan', {
           sub_id: subscription.id,
           new_pkg_id: newPlanId
@@ -234,7 +816,6 @@ export default function CustomerDetailsPage() {
         if (error) throw error;
         alert(data.message + (data.invoice_amount ? ` (Invoice: ₹${data.invoice_amount})` : ''));
       } else {
-        // CASE B: New Subscription (USING NEW SAFE RPC)
         const { error } = await supabase.rpc('assign_new_plan', {
             p_user_id: customerId,
             p_package_id: newPlanId
@@ -249,22 +830,19 @@ export default function CustomerDetailsPage() {
     setActionLoading(false);
   };
 
-  // 2. Remove Plan (Deactivates Customer)
+  // 2. Remove Plan
   const handleRemovePlan = async () => {
     if (!subscription) return;
     if (!confirm("Are you sure you want to remove the plan? This will deactivate the customer and hide their add-ons.")) return;
 
     setActionLoading(true);
     try {
-        // Setting status to 'cancelled' removes it from active view
-        // Add-ons are linked to this subscription ID so they effectively disappear from active view too
         const { error } = await supabase
             .from('subscriptions')
             .update({ status: 'cancelled', updated_at: new Date().toISOString() })
             .eq('id', subscription.id);
 
         if (error) throw error;
-        
         await fetchData(); 
     } catch (error) {
         alert('Error removing plan: ' + error.message);
@@ -370,7 +948,6 @@ export default function CustomerDetailsPage() {
     ? new Date(subscription.next_billing_date).toLocaleDateString() 
     : 'N/A';
 
-  // DYNAMIC STATUS: Determined by presence of active subscription
   const customerStatus = subscription ? 'Active' : 'Inactive';
   const statusColor = subscription 
     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-800' 
@@ -445,51 +1022,27 @@ export default function CustomerDetailsPage() {
             <div className="w-full space-y-4">
               {isEditing ? (
                 <div className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
+                  {/* ... (Existing Edit Form Code) ... */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Full Name</label>
-                    <input 
-                      type="text" 
-                      value={editFormData.full_name}
-                      onChange={(e) => setEditFormData({...editFormData, full_name: e.target.value})}
-                      className="w-full text-lg font-bold text-gray-800 dark:text-white bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
+                    <input type="text" value={editFormData.full_name} onChange={(e) => setEditFormData({...editFormData, full_name: e.target.value})} className="w-full text-lg font-bold text-gray-800 dark:text-white bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"/>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                     <div>
+                      <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer ID</label>
-                      <input 
-                        type="text" 
-                        value={editFormData.customer_id}
-                        onChange={(e) => setEditFormData({...editFormData, customer_id: e.target.value})}
-                        className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                      <input type="text" value={editFormData.customer_id} onChange={(e) => setEditFormData({...editFormData, customer_id: e.target.value})} className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"/>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mobile</label>
-                      <input 
-                        type="text" 
-                        value={editFormData.mobile_number}
-                        onChange={(e) => setEditFormData({...editFormData, mobile_number: e.target.value})}
-                        className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                      <input type="text" value={editFormData.mobile_number} onChange={(e) => setEditFormData({...editFormData, mobile_number: e.target.value})} className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"/>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">VC Number</label>
-                      <input 
-                        type="text" 
-                        value={editFormData.vc_number}
-                        onChange={(e) => setEditFormData({...editFormData, vc_number: e.target.value})}
-                        className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                      <input type="text" value={editFormData.vc_number} onChange={(e) => setEditFormData({...editFormData, vc_number: e.target.value})} className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"/>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Address</label>
-                      <input 
-                        type="text" 
-                        value={editFormData.address}
-                        onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
-                        className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                      <input type="text" value={editFormData.address} onChange={(e) => setEditFormData({...editFormData, address: e.target.value})} className="w-full text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"/>
                     </div>
                   </div>
                 </div>
@@ -525,11 +1078,11 @@ export default function CustomerDetailsPage() {
           
           {/* DYNAMIC STATUS BADGE */}
           {!isEditing && (
-             <div className="mt-4 md:mt-0 md:absolute md:bottom-8 md:right-8 text-center md:text-right">
+              <div className="mt-4 md:mt-0 md:absolute md:bottom-8 md:right-8 text-center md:text-right">
                 <span className={`inline-block px-4 py-1.5 rounded-full text-sm font-bold border ${statusColor}`}>
                     {customerStatus}
                 </span>
-             </div>
+              </div>
           )}
         </div>
 
@@ -640,6 +1193,9 @@ export default function CustomerDetailsPage() {
                 <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                   <CreditCard size={20} className="text-indigo-500"/> Billing
                 </h2>
+                <button onClick={() => openPaymentModal('list')} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors" title="Payment History">
+                    <History size={20} />
+                </button>
               </div>
               <div className="p-5 flex-1 flex flex-col">
                 
@@ -659,8 +1215,55 @@ export default function CustomerDetailsPage() {
                   </button>
                 </div>
 
+                {/* --- NEW SECTION: RECENT PAYMENTS --- */}
+                <div className="mb-6">
+                    <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                            <Receipt size={16}/> Recent Payments
+                        </h3>
+                        <button 
+                            onClick={() => openPaymentModal('add')}
+                            className="text-xs px-2.5 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-md font-bold transition-colors"
+                        >
+                            + Record Pay
+                        </button>
+                    </div>
+                    <div className="space-y-2">
+                        {recentPayments.length > 0 ? (
+                            recentPayments.map(pay => (
+                                <div key={pay.id} className="flex justify-between items-center p-2.5 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
+                                    <div>
+                                        <p className="font-bold text-gray-800 dark:text-white text-sm">₹{pay.amount}</p>
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">{pay.method}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                            {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : 'Pending'}
+                                        </p>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                            pay.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                            {pay.status}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
+                                No recent payments.
+                            </p>
+                        )}
+                        {recentPayments.length > 0 && (
+                            <button onClick={() => openPaymentModal('list')} className="w-full text-center text-xs text-indigo-600 hover:underline mt-2">
+                                View Full History
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+
                 {/* Invoice History */}
-                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
                     <FileText size={16}/> Invoice History
                 </h3>
                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar pr-1">
@@ -690,9 +1293,14 @@ export default function CustomerDetailsPage() {
           
           {/* Mobile Only Invoice History (Since Right Col is hidden on mobile) */}
           <div className="lg:hidden space-y-4 pb-8">
-             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                <CreditCard size={20} className="text-indigo-500"/> Invoice History
-             </h3>
+             <div className="flex items-center justify-between">
+                 <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <CreditCard size={20} className="text-indigo-500"/> Invoice History
+                 </h3>
+                 <button onClick={() => openPaymentModal('list')} className="flex items-center gap-1 text-sm font-medium text-indigo-600">
+                    <History size={16}/> Payment History
+                 </button>
+             </div>
              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-4">
                <div className="space-y-3">
                   {invoices.length > 0 ? (
@@ -751,25 +1359,32 @@ export default function CustomerDetailsPage() {
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium flex items-center justify-end gap-1">
-                <Calendar size={12}/> Next Recharge
+                <CalendarIcon size={12}/> Next Recharge
             </p>
             <p className="text-sm font-bold text-gray-800 dark:text-white">{nextBillingDate}</p>
           </div>
         </div>
-        <button 
-          onClick={handleGenerateInvoice}
-          disabled={actionLoading || !subscription}
-          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
-        >
-          {actionLoading ? <Loader2 className="animate-spin h-5 w-5"/> : <FileText size={18}/>}
-          Generate Invoice
-        </button>
+        <div className="flex gap-2">
+            <button 
+                onClick={() => openPaymentModal('add')}
+                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-semibold shadow-lg shadow-green-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+                <Plus size={18}/> Pay Bill
+            </button>
+            <button 
+              onClick={handleGenerateInvoice}
+              disabled={actionLoading || !subscription}
+              className="px-4 py-3 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-xl font-semibold active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <FileText size={18}/>
+            </button>
+        </div>
       </div>
 
       {/* Modals */}
       <ChangePlanModal 
         isOpen={isPlanModalOpen} 
-        onClose={() => setIsPlanModalOpen(false)}
+        onClose={() => setIsPlanModalOpen(false)} 
         plans={availablePlans}
         currentPlanId={subscription?.package_id}
         onAssignPlan={handleAssignPlan}
@@ -777,11 +1392,23 @@ export default function CustomerDetailsPage() {
       />
 
       <ManageChannelsModal 
-        isOpen={isChannelModalOpen}
-        onClose={() => setIsChannelModalOpen(false)}
+        isOpen={isChannelModalOpen} 
+        onClose={() => setIsChannelModalOpen(false)} 
+        allChannels={availableChannels} 
+        activeChannelIds={addons.map(a => a.channel_id)} 
+        onToggleChannel={handleToggleChannel} 
+      />
+
+      <PaymentHistoryModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        initialView={paymentModalView}
+        customerId={customerId}
+        activeSubscription={subscription}
+        activeAddons={addons}
+        allPlans={availablePlans}
         allChannels={availableChannels}
-        activeChannelIds={addons.map(a => a.channel_id)}
-        onToggleChannel={handleToggleChannel}
+        employees={employees}
       />
 
     </div>
