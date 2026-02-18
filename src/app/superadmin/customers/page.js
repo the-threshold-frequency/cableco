@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { createCustomerAction } from '@/app/actions/createCustomer';
 
 // --- MODAL: ADD CUSTOMER (LIQUID GLASS STYLE) ---
-const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
+const AddCustomerModal = ({ isOpen, onClose, onAddSuccess, existingCustomers }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,6 +17,41 @@ const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
     setError('');
 
     const formData = new FormData(e.target);
+    const fullName = formData.get('full_name')?.toString().trim() || '';
+    const mobileNumber = formData.get('mobile_number')?.toString().trim() || '';
+    const customerId = formData.get('customer_id')?.toString().trim() || '';
+
+    // --- VALIDATION CHECKS ---
+
+    // 1. Name Validation (> 2 letters)
+    if (fullName.length <= 2) {
+        setError('Full Name must be longer than 2 letters.');
+        setLoading(false);
+        return;
+    }
+
+    // 2. Mobile Number Validation (Exactly 10 digits)
+    const mobileRegex = /^\d{10}$/;
+    if (!mobileRegex.test(mobileNumber)) {
+        setError('Mobile Number must be exactly 10 digits.');
+        setLoading(false);
+        return;
+    }
+
+    // 3. Customer ID Uniqueness Check
+    if (customerId) {
+        const isDuplicate = existingCustomers.some(
+            (c) => c.customer_id && c.customer_id.toLowerCase() === customerId.toLowerCase()
+        );
+        if (isDuplicate) {
+            setError(`Customer ID "${customerId}" is already assigned to another user.`);
+            setLoading(false);
+            return;
+        }
+    }
+
+    // --- END VALIDATION ---
+
     const result = await createCustomerAction(formData);
 
     setLoading(false);
@@ -50,7 +85,7 @@ const AddCustomerModal = ({ isOpen, onClose, onAddSuccess }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <p className="text-sm text-red-600 bg-red-100/80 p-3 rounded-xl border border-red-200 backdrop-blur-sm">{error}</p>}
+            {error && <p className="text-sm text-red-600 bg-red-100/80 p-3 rounded-xl border border-red-200 backdrop-blur-sm font-medium">{error}</p>}
             
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar -mr-2 p-1">
                 <div>
@@ -363,6 +398,7 @@ export default function ManageCustomersPage() {
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
             onAddSuccess={() => { fetchCustomers(); }}
+            existingCustomers={customers} 
         />
     </div>
   );

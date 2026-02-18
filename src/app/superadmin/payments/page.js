@@ -1,37 +1,211 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Download, CreditCard, CheckCircle, 
-  Clock, Smartphone, Banknote, Edit, Save, X, Loader2
+  Clock, Smartphone, Banknote, Edit, Save, X, Loader2,
+  Calendar as CalendarIcon, ChevronLeft, ChevronRight, User
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-// --- EDIT MODAL (Local) ---
-const EditPaymentModal = ({ isOpen, onClose, payment, onUpdate }) => {
-    const [amount, setAmount] = useState('');
-    const [status, setStatus] = useState('');
-    const [method, setMethod] = useState('');
+// --- CUSTOM DATE PICKER COMPONENT (Ported from Customer Page) ---
+const CustomDatePicker = ({ label, value, onChange, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(value ? new Date(value) : new Date());
+  const containerRef = useRef(null);
+
+  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
+  
+  const handleDateClick = (day) => {
+    const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+    const formatted = newDate.toLocaleDateString('en-CA'); 
+    onChange(formatted);
+    setIsOpen(false);
+  };
+
+  const changeMonth = (offset) => {
+    setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1));
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className={`relative ${disabled ? 'opacity-50 pointer-events-none' : ''}`} ref={containerRef}>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+      <div 
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none flex items-center justify-between cursor-pointer ${disabled ? 'cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'focus:border-indigo-500'}`}
+      >
+        <span>{value ? new Date(value).toLocaleDateString() : 'Pending...'}</span>
+        <CalendarIcon size={16} className="text-gray-400"/>
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="absolute top-full left-0 mt-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 w-64 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={(e) => { e.preventDefault(); changeMonth(-1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronLeft size={16} className="text-gray-600 dark:text-gray-300"/></button>
+            <span className="font-bold text-gray-800 dark:text-white text-sm">
+              {viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+            </span>
+            <button onClick={(e) => { e.preventDefault(); changeMonth(1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronRight size={16} className="text-gray-600 dark:text-gray-300"/></button>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {['S','M','T','W','T','F','S'].map((d, i) => <span key={i} className="text-[10px] text-gray-400 font-bold">{d}</span>)}
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const isSelected = value && new Date(value).getDate() === day && new Date(value).getMonth() === viewDate.getMonth() && new Date(value).getFullYear() === viewDate.getFullYear();
+              return (
+                <button
+                  key={day}
+                  onClick={(e) => { e.preventDefault(); handleDateClick(day); }}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full text-sm transition-colors ${
+                    isSelected 
+                      ? 'bg-indigo-600 text-white font-bold' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- CUSTOM MONTH PICKER COMPONENT (Ported from Customer Page) ---
+const CustomMonthPicker = ({ label, value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(value ? parseInt(value.split('-')[0]) : new Date().getFullYear());
+  const containerRef = useRef(null);
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handleMonthClick = (monthIndex) => {
+    const monthStr = (monthIndex + 1).toString().padStart(2, '0');
+    onChange(`${viewYear}-${monthStr}`);
+    setIsOpen(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500 flex items-center justify-between cursor-pointer"
+      >
+        <span>
+            {value ? new Date(value + '-01').toLocaleDateString('default', { month: 'long', year: 'numeric' }) : 'Select Month'}
+        </span>
+        <CalendarIcon size={16} className="text-gray-400"/>
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 w-64 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={(e) => { e.preventDefault(); setViewYear(viewYear - 1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronLeft size={16} className="text-gray-600 dark:text-gray-300"/></button>
+            <span className="font-bold text-gray-800 dark:text-white text-sm">{viewYear}</span>
+            <button onClick={(e) => { e.preventDefault(); setViewYear(viewYear + 1); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><ChevronRight size={16} className="text-gray-600 dark:text-gray-300"/></button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2">
+            {months.map((m, i) => {
+              const isSelected = value && parseInt(value.split('-')[1]) === (i + 1) && parseInt(value.split('-')[0]) === viewYear;
+              return (
+                <button
+                  key={m}
+                  onClick={(e) => { e.preventDefault(); handleMonthClick(i); }}
+                  className={`py-2 text-xs rounded-lg transition-colors ${
+                    isSelected 
+                      ? 'bg-indigo-600 text-white font-bold' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- RICH EDIT MODAL (Matching Customer Page Style) ---
+const EditPaymentModal = ({ isOpen, onClose, payment, onUpdate, employees }) => {
+    const [formData, setFormData] = useState({
+        amount: '',
+        status: '',
+        method: '',
+        paymentDate: '',
+        billingMonth: '',
+        collectedBy: '',
+        notes: ''
+    });
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (payment) {
-            setAmount(payment.amount);
-            setStatus(payment.status);
-            setMethod(payment.method);
+            setFormData({
+                amount: payment.amount,
+                status: payment.status,
+                method: payment.method,
+                paymentDate: payment.payment_date || '',
+                billingMonth: payment.billing_month.slice(0, 7),
+                collectedBy: payment.collected_by || '',
+                notes: payment.notes || ''
+            });
         }
     }, [payment]);
 
     const handleSave = async (e) => {
         e.preventDefault();
         setLoading(true);
+
+        if (formData.status === 'paid' && !formData.paymentDate) {
+            alert("Please select a Payment Date for paid records.");
+            setLoading(false);
+            return;
+        }
+
         const updates = { 
-            amount: parseFloat(amount),
-            status, 
-            method,
-            // If setting to paid, set date if missing
-            payment_date: status === 'paid' && !payment.payment_date ? new Date().toISOString() : payment.payment_date
+            amount: parseFloat(formData.amount),
+            status: formData.status, 
+            method: formData.method,
+            payment_date: formData.status === 'pending' ? null : formData.paymentDate,
+            billing_month: `${formData.billingMonth}-01`,
+            collected_by: formData.collectedBy || null,
+            notes: formData.notes
         };
+
         await onUpdate(payment.id, updates);
         setLoading(false);
         onClose();
@@ -40,38 +214,105 @@ const EditPaymentModal = ({ isOpen, onClose, payment, onUpdate }) => {
     if (!isOpen || !payment) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="p-6 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
-                    <h3 className="font-bold text-gray-800 dark:text-white">Edit Payment</h3>
-                    <button onClick={onClose}><X size={20} className="text-gray-500"/></button>
+        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm transition-all">
+            <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-6 shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <Edit className="text-indigo-500"/> Edit Payment
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Update payment details for {payment.customer?.full_name || 'Customer'}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"><X size={20}/></button>
                 </div>
-                <form onSubmit={handleSave} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Amount</label>
-                        <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+
+                <form onSubmit={handleSave} className="space-y-4">
+                    {/* Row 1: Dates & Status */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</label>
+                            <select 
+                                value={formData.status} 
+                                onChange={e => {
+                                    const newStatus = e.target.value;
+                                    setFormData({
+                                        ...formData, 
+                                        status: newStatus,
+                                        paymentDate: newStatus === 'pending' ? '' : new Date().toISOString().split('T')[0]
+                                    });
+                                }} 
+                                className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"
+                            >
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                                <option value="failed">Failed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <CustomDatePicker 
+                                label="Payment Date"
+                                value={formData.paymentDate}
+                                onChange={(date) => setFormData({...formData, paymentDate: date})}
+                                disabled={formData.status === 'pending'} 
+                            />
+                        </div>
+                        <div>
+                            <CustomMonthPicker 
+                                label="Billing Month"
+                                value={formData.billingMonth}
+                                onChange={(month) => setFormData({...formData, billingMonth: month})}
+                            />
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Status</label>
-                        <select value={status} onChange={e => setStatus(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="paid">Paid</option>
-                            <option value="pending">Pending</option>
-                            <option value="failed">Failed</option>
-                        </select>
+
+                    {/* Row 2: Collected By & Method */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Collected By</label>
+                            <select required value={formData.collectedBy} onChange={e => setFormData({...formData, collectedBy: e.target.value})} className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500">
+                                <option value="">Select Employee</option>
+                                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Payment Method</label>
+                            <select 
+                                required
+                                value={formData.method} 
+                                onChange={e => setFormData({...formData, method: e.target.value})} 
+                                className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"
+                            >
+                                <option value="cash">Cash</option>
+                                <option value="upi">UPI / Online</option>
+                                <option value="card">Card</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Method</label>
-                        <select value={method} onChange={e => setMethod(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="cash">Cash</option>
-                            <option value="upi">UPI / Online</option>
-                            <option value="card">Card</option>
-                            <option value="cheque">Cheque</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                        </select>
+
+                    {/* Row 3: Amount & Notes */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Amount (₹)</label>
+                            <input type="number" step="0.01" required value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-800 border-2 border-indigo-100 dark:border-indigo-900 rounded-lg text-sm font-bold text-indigo-700 dark:text-indigo-400 outline-none focus:border-indigo-500"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes (Optional)</label>
+                            <input type="text" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Check no, UPI ref, etc." className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-white outline-none focus:border-indigo-500"/>
+                        </div>
                     </div>
-                    <button type="submit" disabled={loading} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 flex justify-center items-center gap-2">
-                        {loading ? <Loader2 className="animate-spin h-4 w-4"/> : <Save size={16}/>} Save
-                    </button>
+
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+                        <button type="button" onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" disabled={loading} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                            {loading && <Loader2 className="animate-spin h-4 w-4"/>} Save Changes
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -81,6 +322,7 @@ const EditPaymentModal = ({ isOpen, onClose, payment, onUpdate }) => {
 export default function PaymentsPage() {
   const supabase = createClient();
   const [payments, setPayments] = useState([]);
+  const [employees, setEmployees] = useState([]); // NEW: Store employees for modal
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); 
@@ -91,6 +333,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     fetchPayments();
+    fetchEmployees();
   }, []);
 
   const fetchPayments = async () => {
@@ -110,6 +353,11 @@ export default function PaymentsPage() {
       setPayments(data || []);
     }
     setLoading(false);
+  };
+
+  const fetchEmployees = async () => {
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'employee');
+      setEmployees(data || []);
   };
 
   const updatePayment = async (id, updates) => {
@@ -159,6 +407,7 @@ export default function PaymentsPage() {
             onClose={() => setIsEditModalOpen(false)} 
             payment={editingPayment} 
             onUpdate={updatePayment}
+            employees={employees}
         />
 
         <div className="p-4 sm:p-6 md:p-10 max-w-7xl mx-auto min-h-screen">
